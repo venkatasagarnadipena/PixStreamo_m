@@ -19,6 +19,11 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import com.example.pixstreamo_m.ui.SharedViewModel
 import com.example.pixstreamo_m.ui.*
 import kotlinx.coroutines.Dispatchers
@@ -29,6 +34,7 @@ class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         Log.d("PixStreamo_Trace", "MainActivity: onCreate")
+        checkAndRequestPermissions()
 
         val app = application as PixStreamoApplication
         val megaRepository = app.megaRepository
@@ -122,7 +128,8 @@ class MainActivity : FragmentActivity() {
                             onImageClick = { nodes, index ->
                                 sharedViewModel.setNodes(nodes)
                                 navController.navigate("image_viewer/$folderId/$index")
-                            }
+                            },
+                            sharedViewModel = sharedViewModel
                         )
                     }
                 }
@@ -155,11 +162,36 @@ class MainActivity : FragmentActivity() {
                             folderUrl = folderUrl!!,
                             megaRepository = megaRepository,
                             streamManager = streamManager,
-                            onBackClick = { navController.popBackStack() }
+                            onBackClick = { navController.popBackStack() },
+                            sharedViewModel = sharedViewModel
                         )
                     }
                 }
             }
+        }
+    }
+
+    private fun checkAndRequestPermissions() {
+        val permissions = mutableListOf(
+            Manifest.permission.ACCESS_FINE_LOCATION,
+            Manifest.permission.ACCESS_COARSE_LOCATION
+        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            permissions.add(Manifest.permission.NEARBY_WIFI_DEVICES)
+        }
+
+        val requestPermissionLauncher = registerForActivityResult(
+            ActivityResultContracts.RequestMultiplePermissions()
+        ) { results ->
+            Log.d("PixStreamo_Trace", "Permission results: $results")
+        }
+
+        val missing = permissions.filter {
+            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+        }
+
+        if (missing.isNotEmpty()) {
+            requestPermissionLauncher.launch(missing.toTypedArray())
         }
     }
 }

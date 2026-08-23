@@ -4,6 +4,7 @@
 package com.example.pixstreamo_m.ui
 
 import android.util.Log
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -171,6 +172,22 @@ fun ImageGridScreen(
                         }
                     }
                 }
+            }
+
+            // Debug IP Overlay
+            val baseUrl = sharedViewModel.localStreamServer?.getBaseUrl() ?: "Server Not Initialized"
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(8.dp)
+                    .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.7f))
+                    .padding(4.dp)
+            ) {
+                Text(
+                    text = "Base: $baseUrl",
+                    color = androidx.compose.ui.graphics.Color.Green,
+                    style = MaterialTheme.typography.labelSmall
+                )
             }
         }
     }

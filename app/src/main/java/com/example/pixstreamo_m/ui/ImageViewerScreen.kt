@@ -112,7 +112,9 @@ fun ImageViewerScreen(
     }
 
     LaunchedEffect(currentIndex) {
-        Log.d("PixStreamo_Trace", "ImageViewer: Index changed to $currentIndex. Triggering cast...")
+        Log.d("PixStreamo_Trace", "ImageViewer: Index changed to $currentIndex. Current active session: ${streamManager.isConnected.value}")
+        // Small delay to prevent flood during rapid swipe
+        delay(500)
         sharedViewModel.castImage(context, nodes[currentIndex], folderUrl)
         
         if (currentIndex >= cacheEnd - 20 && cacheEnd < nodes.size) {
@@ -261,6 +263,22 @@ fun ImageViewerScreen(
                         Button(onClick = { scope.launch { pagerState.animateScrollToPage(pagerState.currentPage + 1) } }, enabled = pagerState.currentPage < nodes.size - 1, modifier = Modifier.weight(1f).height(48.dp)) { Text("Next") }
                     }
                 }
+            }
+
+            // Debug IP Overlay
+            val baseUrl = sharedViewModel.localStreamServer?.getBaseUrl() ?: "Server Not Initialized"
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomStart)
+                    .padding(8.dp)
+                    .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.7f))
+                    .padding(4.dp)
+            ) {
+                Text(
+                    text = "Viewer Base: $baseUrl",
+                    color = androidx.compose.ui.graphics.Color.Green,
+                    style = MaterialTheme.typography.labelSmall
+                )
             }
 
             // Dedicated Slideshow Controls Overlay
