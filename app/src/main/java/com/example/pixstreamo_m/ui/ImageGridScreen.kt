@@ -1,5 +1,5 @@
 /**
- * PixStreamo Modern Image Grid Screen
+ * PixStreamo Modern Image Grid Screen with Strict Isolation
  */
 package com.example.pixstreamo_m.ui
 
@@ -50,7 +50,8 @@ fun ImageGridScreen(
     sharedViewModel: SharedViewModel = viewModel()
 ) {
     val allNodes by sharedViewModel.gridNodes.collectAsState()
-    var displayedNodes by remember { mutableStateOf<List<MegaImageNode>>(emptyList()) }
+    val isCleaningUp by sharedViewModel.isCleaningUp.collectAsState()
+    
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     
@@ -58,13 +59,30 @@ fun ImageGridScreen(
     val scope = rememberCoroutineScope()
     val gridState = rememberLazyGridState()
 
-    val imageLoader = remember(folderUrl) {
+    // Folder Entry Sync
+    LaunchedEffect(folderUrl) {
         if (sharedViewModel.activeFolderUrl != folderUrl) {
-            sharedViewModel.gridImageLoader = null
-            sharedViewModel.fullImageLoader = null
             sharedViewModel.activeFolderUrl = folderUrl
-            sharedViewModel.setNodes(emptyList()) // Clear if folder changed
+            sharedViewModel.setNodes(emptyList())
+            
+            isLoading = true
+            try {
+                val nodes = withContext(Dispatchers.IO) {
+                    megaRepository.getFolderNodes(folderUrl)
+                }
+                sharedViewModel.setNodes(nodes)
+                sharedViewModel.startInitialLoad()
+            } catch (e: Exception) {
+                errorMessage = e.message
+            } finally {
+                isLoading = false
+            }
         }
+    }
+
+    val imageLoader = remember(folderUrl, isCleaningUp) {
+        if (isCleaningUp) return@remember null
+        
         sharedViewModel.gridImageLoader ?: run {
             val dispatcher = Executors.newFixedThreadPool(2).asCoroutineDispatcher()
             val loader = ImageLoader.Builder(context.applicationContext)
@@ -75,51 +93,6 @@ fun ImageGridScreen(
                 .build()
             sharedViewModel.gridImageLoader = loader
             loader
-        }
-    }
-
-    fun loadNodes() {
-        scope.launch {
-            isLoading = true
-            errorMessage = null
-            try {
-                val nodes = withContext(Dispatchers.IO) {
-                    megaRepository.getFolderNodes(folderUrl)
-                }
-                sharedViewModel.setNodes(nodes)
-                if (nodes.isEmpty()) {
-                    errorMessage = "No images found."
-                }
-            } catch (e: Exception) {
-                errorMessage = "Error: ${e.message}"
-            } finally {
-                isLoading = false
-            }
-        }
-    }
-
-    LaunchedEffect(folderUrl) {
-        if (allNodes.isEmpty()) loadNodes()
-    }
-    
-    LaunchedEffect(allNodes) {
-        if (allNodes.isNotEmpty()) {
-            displayedNodes = allNodes.take(50)
-        }
-    }
-
-    val shouldLoadMore = remember {
-        derivedStateOf {
-            val totalItems = displayedNodes.size
-            val lastVisibleItem = gridState.layoutInfo.visibleItemsInfo.lastOrNull()?.index ?: 0
-            totalItems > 0 && lastVisibleItem >= totalItems - 10 && totalItems < allNodes.size
-        }
-    }
-
-    LaunchedEffect(shouldLoadMore.value) {
-        if (shouldLoadMore.value) {
-            val nextBatch = allNodes.drop(displayedNodes.size).take(50)
-            displayedNodes = displayedNodes + nextBatch
         }
     }
 
@@ -136,7 +109,9 @@ fun ImageGridScreen(
                     }
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBackClick) { Icon(painterResource(R.drawable.ic_back), "Back", tint = Color.White) }
+                    IconButton(onClick = {
+                        sharedViewModel.exitFolderCleanup { onBackClick() }
+                    }) { Icon(painterResource(R.drawable.ic_back), "Back", tint = Color.White) }
                 },
                 actions = {
                     CastButton(streamManager = streamManager, modifier = Modifier.size(40.dp))
@@ -146,18 +121,13 @@ fun ImageGridScreen(
         }
     ) { paddingValues ->
         Box(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
-            if (isLoading && displayedNodes.isEmpty()) {
-                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center), color = MaterialTheme.colorScheme.primary)
-            } else if (errorMessage != null && displayedNodes.isEmpty()) {
-                Column(
-                    modifier = Modifier.fillMaxSize().padding(32.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    Text(text = errorMessage!!, color = Color.White)
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Button(onClick = { loadNodes() }) { Text("Retry") }
+            if ((isLoading || isCleaningUp) && allNodes.isEmpty()) {
+                Column(modifier = Modifier.align(Alignment.Center), horizontalAlignment = Alignment.CenterHorizontally) {
+                    CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+                    if (isCleaningUp) Text("Cleaning up...", color = Color.Gray, style = MaterialTheme.typography.labelSmall)
                 }
+            } else if (errorMessage != null && allNodes.isEmpty()) {
+                Text(errorMessage!!, color = Color.White, modifier = Modifier.align(Alignment.Center))
             } else {
                 LazyVerticalGrid(
                     state = gridState,
@@ -167,12 +137,14 @@ fun ImageGridScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    itemsIndexed(displayedNodes) { index, node ->
-                        ImageCard(
-                            node = node, 
-                            imageLoader = imageLoader,
-                            onClick = { onImageClick(allNodes, index) }
-                        )
+                    itemsIndexed(allNodes) { index, node ->
+                        if (imageLoader != null) {
+                            ImageCard(
+                                node = node, 
+                                imageLoader = imageLoader,
+                                onClick = { onImageClick(allNodes, index) }
+                            )
+                        }
                     }
                 }
             }
@@ -212,18 +184,7 @@ fun ImageCard(node: MegaImageNode, imageLoader: ImageLoader, onClick: () -> Unit
                     else -> SubcomposeAsyncImageContent()
                 }
             }
-            
-            // Minimal Overlay for text readability
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.verticalGradient(
-                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.4f)),
-                            startY = 150f
-                        )
-                    )
-            )
+            Box(modifier = Modifier.fillMaxSize().background(Brush.verticalGradient(colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.4f)), startY = 150f)))
         }
     }
 }

@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.pixstreamo_m.mega.StreamManager
 
 @Composable
@@ -47,17 +48,18 @@ fun PixStreamoTheme(
 fun CastButton(
     streamManager: StreamManager?,
     modifier: Modifier = Modifier,
-    tint: Color = Color.White
+    tint: Color = Color.White,
+    sharedViewModel: SharedViewModel = viewModel()
 ) {
     if (streamManager == null) return
     
     val isConnected by streamManager.isConnected.collectAsState()
     val discoveredRoutes by streamManager.discoveredRoutes.collectAsState()
-    var showDialog by remember { mutableStateOf(false) }
+    val showDialog by sharedViewModel.isCastDialogOpen.collectAsState()
 
     IconButton(
         onClick = { 
-            showDialog = true 
+            sharedViewModel.setCastDialogOpen(true)
             streamManager.startDiscovery()
         },
         modifier = modifier
@@ -72,7 +74,7 @@ fun CastButton(
     if (showDialog) {
         AlertDialog(
             onDismissRequest = { 
-                showDialog = false
+                sharedViewModel.setCastDialogOpen(false)
                 streamManager.stopDiscovery()
             },
             containerColor = Color(0xFF1A1A1A),
@@ -95,7 +97,7 @@ fun CastButton(
                                 colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                                 modifier = Modifier.clickable {
                                     streamManager.selectRoute(route)
-                                    showDialog = false
+                                    sharedViewModel.setCastDialogOpen(false)
                                 }
                             )
                         }
@@ -106,14 +108,14 @@ fun CastButton(
                 if (isConnected) {
                     TextButton(onClick = { 
                         streamManager.disconnect()
-                        showDialog = false
+                        sharedViewModel.setCastDialogOpen(false)
                     }) {
                         Text("Disconnect Device", color = MaterialTheme.colorScheme.error)
                     }
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showDialog = false }) { Text("Cancel", color = Color.Gray) }
+                TextButton(onClick = { sharedViewModel.setCastDialogOpen(false) }) { Text("Cancel", color = Color.Gray) }
             }
         )
     }
