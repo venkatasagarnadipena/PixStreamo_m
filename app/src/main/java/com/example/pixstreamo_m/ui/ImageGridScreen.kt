@@ -24,6 +24,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.ImageLoader
 import coil.compose.AsyncImagePainter
@@ -114,6 +115,28 @@ fun ImageGridScreen(
                     }) { Icon(painterResource(R.drawable.ic_back), "Back", tint = Color.White) }
                 },
                 actions = {
+                    // Initial Preload Progress (First 50 images)
+                    val preloadCount by sharedViewModel.gridPreloadCount.collectAsState()
+                    val targetCount = remember(allNodes.size) { minOf(allNodes.size, 50) }
+                    
+                    if (targetCount > 0 && preloadCount < targetCount) {
+                        Box(contentAlignment = Alignment.Center, modifier = Modifier.padding(end = 4.dp).size(40.dp)) {
+                            CircularProgressIndicator(
+                                progress = { preloadCount.toFloat() / 50f }, // Based on initial 50-image batch
+                                modifier = Modifier.size(26.dp),
+                                strokeWidth = 3.dp,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                            // Progress calculated as 2% per image (based on 50-image batch)
+                            val displayPercentage = (preloadCount * 2).coerceAtMost(100)
+                            Text(
+                                text = "${displayPercentage}%",
+                                style = MaterialTheme.typography.labelSmall.copy(fontSize = 7.sp),
+                                color = Color.White
+                            )
+                        }
+                    }
+                    
                     CastButton(streamManager = streamManager, modifier = Modifier.size(40.dp))
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Black.copy(alpha = 0.8f))
