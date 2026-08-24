@@ -5,7 +5,6 @@ package com.example.pixstreamo_m.ui
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -24,7 +23,7 @@ import com.example.pixstreamo_m.mega.StreamManager
 fun PixStreamoTheme(
     content: @Composable () -> Unit
 ) {
-    val darkColors = darkColorScheme(
+    val tealColors = darkColorScheme(
         primary = Color(0xFF2A7D69),
         onPrimary = Color.White,
         background = Color.Black,
@@ -35,7 +34,7 @@ fun PixStreamoTheme(
     )
 
     MaterialTheme(
-        colorScheme = darkColors,
+        colorScheme = tealColors,
         content = content
     )
 }
@@ -76,22 +75,24 @@ fun CastButton(
                 showDialog = false
                 streamManager.stopDiscovery()
             },
-            title = { Text("Connect to Device") },
+            containerColor = Color(0xFF1A1A1A),
+            title = { Text("Connect to Device", color = Color.White, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold) },
             text = {
                 if (discoveredRoutes.isEmpty()) {
                     Box(Modifier.fillMaxWidth().height(100.dp), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             CircularProgressIndicator(modifier = Modifier.size(24.dp))
                             Spacer(Modifier.height(8.dp))
-                            Text("Searching for TVs...", style = MaterialTheme.typography.bodySmall)
+                            Text("Searching for TVs...", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
                         }
                     }
                 } else {
                     LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 300.dp)) {
                         items(discoveredRoutes) { route ->
                             ListItem(
-                                headlineContent = { Text(route.name) },
-                                leadingContent = { Icon(Icons.Default.Tv, null) },
+                                headlineContent = { Text(route.name, color = Color.White) },
+                                leadingContent = { Icon(Icons.Default.Tv, null, tint = MaterialTheme.colorScheme.primary) },
+                                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                                 modifier = Modifier.clickable {
                                     streamManager.selectRoute(route)
                                     showDialog = false
@@ -107,12 +108,12 @@ fun CastButton(
                         streamManager.disconnect()
                         showDialog = false
                     }) {
-                        Text("Disconnect", color = MaterialTheme.colorScheme.error)
+                        Text("Disconnect Device", color = MaterialTheme.colorScheme.error)
                     }
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showDialog = false }) { Text("Cancel") }
+                TextButton(onClick = { showDialog = false }) { Text("Cancel", color = Color.Gray) }
             }
         )
     }

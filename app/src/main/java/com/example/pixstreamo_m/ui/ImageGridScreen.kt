@@ -17,7 +17,6 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
@@ -27,7 +26,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.ImageLoader
-import coil.compose.AsyncImage
+import coil.compose.AsyncImagePainter
+import coil.compose.SubcomposeAsyncImage
+import coil.compose.SubcomposeAsyncImageContent
 import coil.memory.MemoryCache
 import com.example.pixstreamo_m.R
 import com.example.pixstreamo_m.mega.*
@@ -36,10 +37,6 @@ import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.Executors
-
-import coil.compose.AsyncImagePainter
-import coil.compose.SubcomposeAsyncImage
-import coil.compose.SubcomposeAsyncImageContent
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -52,10 +49,11 @@ fun ImageGridScreen(
     onImageClick: (List<MegaImageNode>, Int) -> Unit,
     sharedViewModel: SharedViewModel = viewModel()
 ) {
-    var allNodes by remember { mutableStateOf<List<MegaImageNode>>(emptyList()) }
+    val allNodes by sharedViewModel.gridNodes.collectAsState()
     var displayedNodes by remember { mutableStateOf<List<MegaImageNode>>(emptyList()) }
-    var isLoading by remember { mutableStateOf(true) }
+    var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val gridState = rememberLazyGridState()
@@ -65,6 +63,7 @@ fun ImageGridScreen(
             sharedViewModel.gridImageLoader = null
             sharedViewModel.fullImageLoader = null
             sharedViewModel.activeFolderUrl = folderUrl
+            sharedViewModel.setNodes(emptyList()) // Clear if folder changed
         }
         sharedViewModel.gridImageLoader ?: run {
             val dispatcher = Executors.newFixedThreadPool(2).asCoroutineDispatcher()
@@ -87,11 +86,9 @@ fun ImageGridScreen(
                 val nodes = withContext(Dispatchers.IO) {
                     megaRepository.getFolderNodes(folderUrl)
                 }
-                allNodes = nodes
-                if (allNodes.isEmpty()) {
+                sharedViewModel.setNodes(nodes)
+                if (nodes.isEmpty()) {
                     errorMessage = "No images found."
-                } else {
-                    displayedNodes = allNodes.take(50)
                 }
             } catch (e: Exception) {
                 errorMessage = "Error: ${e.message}"
@@ -103,6 +100,12 @@ fun ImageGridScreen(
 
     LaunchedEffect(folderUrl) {
         if (allNodes.isEmpty()) loadNodes()
+    }
+    
+    LaunchedEffect(allNodes) {
+        if (allNodes.isNotEmpty()) {
+            displayedNodes = allNodes.take(50)
+        }
     }
 
     val shouldLoadMore = remember {
@@ -136,7 +139,7 @@ fun ImageGridScreen(
                     IconButton(onClick = onBackClick) { Icon(painterResource(R.drawable.ic_back), "Back", tint = Color.White) }
                 },
                 actions = {
-                    CastButton(streamManager = streamManager, modifier = Modifier.size(40.dp), tint = Color.White)
+                    CastButton(streamManager = streamManager, modifier = Modifier.size(40.dp))
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Black.copy(alpha = 0.8f))
             )
@@ -210,7 +213,7 @@ fun ImageCard(node: MegaImageNode, imageLoader: ImageLoader, onClick: () -> Unit
                 }
             }
             
-            // Minimal Overlay for text readability if needed
+            // Minimal Overlay for text readability
             Box(
                 modifier = Modifier
                     .fillMaxSize()

@@ -36,6 +36,8 @@ class MegaRepository(private val gson: Gson, private val cacheManager: CacheMana
     // Tracking how many high-priority tasks are waiting to help low-priority tasks yield.
     private val urgentWaitingCount = AtomicInteger(0)
 
+    fun isUrgentWaiting(): Boolean = urgentWaitingCount.get() > 0
+
     fun fetchConfig(url: String, destPath: String): List<FolderEntity> {
         val body = try {
             val pyObj = engine.callAttr("fetch_config", url, destPath)
@@ -54,7 +56,7 @@ class MegaRepository(private val gson: Gson, private val cacheManager: CacheMana
                 for (i in 0 until jsonArray.length()) {
                     val obj = jsonArray.getJSONObject(i)
                     val name = obj.optString("folder", obj.optString("name", "Folder $i"))
-                    folderPairs.add(FolderEntity(name = name, url = obj.getString("url"), sourceUrl = url))
+                    folderPairs.add(FolderEntity(name = name, url = obj.getString("url")))
                 }
             } else if (body.startsWith("{")) {
                 val jsonObj = JSONObject(body)
@@ -62,7 +64,7 @@ class MegaRepository(private val gson: Gson, private val cacheManager: CacheMana
                     val array = jsonObj.getJSONArray("Folders")
                     for (i in 0 until array.length()) {
                         val obj = array.getJSONObject(i)
-                        folderPairs.add(FolderEntity(name = obj.optString("name", "Unknown"), url = obj.getString("url"), sourceUrl = url))
+                        folderPairs.add(FolderEntity(name = obj.optString("name", "Unknown"), url = obj.getString("url")))
                     }
                 }
             }
@@ -111,14 +113,22 @@ class MegaRepository(private val gson: Gson, private val cacheManager: CacheMana
     ): ByteArray = withContext(Dispatchers.IO) {
         val cacheKey = if (isThumbnail) "thumb_$handle" else "full_$handle"
         
+        // 1. Fast Cache Check (No Lock)
         val cached = cacheManager.getFromCache(cacheKey)
         if (cached != null) return@withContext cached
 
+        if (priority == DecryptPriority.URGENT) urgentWaitingCount.incrementAndGet()
+
         try {
+            // 2. Python Decryption (Minimal Lock duration)
             val rawBytes = withTimeout(60000L) {
                 pythonLock.withLock {
+                    // Double check cache under lock
                     val secondCheck = cacheManager.getFromCache(cacheKey)
                     if (secondCheck != null) return@withLock secondCheck
+
+                    // If this is a LOW priority task and high priority ones are waiting, we could yield here
+                    // However, in standard Mutex we can't easily jump, but we keep the lock duration short.
                     
                     val pyBytes = engine.callAttr("decrypt_image_bytes", handle, nodeKey, folderUrl)
                     pyBytes.toJava(ByteArray::class.java)
@@ -127,17 +137,22 @@ class MegaRepository(private val gson: Gson, private val cacheManager: CacheMana
 
             if (rawBytes.isEmpty()) return@withContext ByteArray(0)
 
-            // OPTIMIZATION: Only process thumbnails. Full images stay raw to save CPU/Battery.
-            val finalBytes = if (isThumbnail) {
-                createThumbnail(rawBytes)
-            } else {
-                rawBytes
+            // 3. Post-Processing (OUTSIDE Python Lock)
+            // This is the key fix for Thermal/Performance: WebP compression is heavy and doesn't need the Python lock.
+            var finalBytes = rawBytes
+            if (isThumbnail) {
+                finalBytes = createThumbnail(rawBytes)
             }
             
+            // 4. Persistence (OUTSIDE Python Lock)
             cacheManager.saveToCache(cacheKey, finalBytes)
+            
             finalBytes
         } catch (e: Exception) {
+            Log.e("PixStreamo_Trace", "Decryption failed for $handle", e)
             ByteArray(0)
+        } finally {
+            if (priority == DecryptPriority.URGENT) urgentWaitingCount.decrementAndGet()
         }
     }
 
@@ -147,18 +162,17 @@ class MegaRepository(private val gson: Gson, private val cacheManager: CacheMana
             BitmapFactory.decodeByteArray(data, 0, data.size, options)
             
             var sampleSize = 1
-            // Target ~400px for thumbnails
-            while (options.outWidth / (sampleSize * 2) >= 400) { sampleSize *= 2 }
+            while (options.outWidth / (sampleSize * 2) >= 300) { sampleSize *= 2 }
             
             val thumbOptions = BitmapFactory.Options().apply {
                 inSampleSize = sampleSize
-                inPreferredConfig = Bitmap.Config.RGB_565 
+                inPreferredConfig = Bitmap.Config.RGB_565 // Half memory usage vs ARGB_8888
             }
             
             val bitmap = BitmapFactory.decodeByteArray(data, 0, data.size, thumbOptions)
             val outputStream = ByteArrayOutputStream()
-            // JPEG is faster to compress than WEBP on many devices
-            bitmap.compress(Bitmap.CompressFormat.JPEG, 70, outputStream)
+            // WebP is more CPU intensive but produces much smaller files, saving Disk I/O
+            bitmap.compress(Bitmap.CompressFormat.WEBP, 70, outputStream)
             val result = outputStream.toByteArray()
             bitmap?.recycle()
             result

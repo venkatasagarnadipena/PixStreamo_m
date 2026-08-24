@@ -3,10 +3,6 @@
  */
 package com.example.pixstreamo_m.mega
 
-import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.Paint
 import android.util.Log
 import io.ktor.http.*
 import io.ktor.server.application.*
@@ -17,7 +13,6 @@ import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.io.ByteArrayOutputStream
 import java.net.InetAddress
 import java.net.NetworkInterface
 
@@ -29,6 +24,9 @@ class LocalStreamServer(private val repository: MegaRepository) {
     fun start() {
         if (server != null) return
 
+        val ip = getIpAddress()
+        Log.d("PixStreamo_Trace", "LocalServer: STARTING. URL will be: http://$ip:$port")
+
         server = embeddedServer(CIO, port = port) {
             install(CORS) {
                 anyHost()
@@ -36,32 +34,48 @@ class LocalStreamServer(private val repository: MegaRepository) {
             }
 
             routing {
+                // Test endpoint to verify reachability
                 get("/ping") {
-                    call.respondText("ALIVE")
+                    val remote = call.request.local.remoteHost
+                    Log.d("PixStreamo_Trace", "LocalServer: PING from $remote")
+                    call.respondText("PixStreamo Server is ALIVE")
                 }
 
-                get("/loading.jpg") {
-                    val bytes = createLoadingImage()
-                    call.respondBytes(bytes, ContentType.Image.JPEG)
+                get("/test.jpg") {
+                    val remote = call.request.local.remoteHost
+                    Log.d("PixStreamo_Trace", "LocalServer: TEST Request from $remote")
+                    call.respondText("REACHABLE")
                 }
 
                 get("/stream") {
-                    val handle = call.request.queryParameters["h"] ?: return@get call.respond(HttpStatusCode.BadRequest)
-                    val key = call.request.queryParameters["k"] ?: return@get call.respond(HttpStatusCode.BadRequest)
-                    val folderUrl = call.request.queryParameters["f"] ?: return@get call.respond(HttpStatusCode.BadRequest)
+                    val remote = call.request.local.remoteHost
+                    val handle = call.request.queryParameters["h"]
+                    val key = call.request.queryParameters["k"]
+                    val folderUrl = call.request.queryParameters["f"]
+                    
+                    Log.d("PixStreamo_Trace", "LocalServer: [HTTP] Request from $remote | H=$handle | K=$key")
+
+                    if (handle == null || key == null || folderUrl == null) {
+                        Log.e("PixStreamo_Trace", "LocalServer: Missing parameters! H=$handle, K=$key, F=$folderUrl")
+                        return@get call.respond(HttpStatusCode.BadRequest)
+                    }
 
                     try {
+                        Log.d("PixStreamo_Trace", "LocalServer: Starting decryption for $handle")
                         val bytes = withContext(Dispatchers.IO) {
-                            repository.decryptImage(handle, key, folderUrl, isThumbnail = false)
+                            repository.decryptImage(handle, key, folderUrl, isThumbnail = false, priority = DecryptPriority.URGENT)
                         }
 
                         if (bytes.isNotEmpty()) {
+                            Log.d("PixStreamo_Trace", "LocalServer: Decryption SUCCESS. Sending ${bytes.size} bytes to TV")
                             call.response.header(HttpHeaders.ContentLength, bytes.size.toString())
                             call.respondBytes(bytes, ContentType.Image.JPEG)
                         } else {
+                            Log.e("PixStreamo_Trace", "LocalServer: Decryption returned EMPTY bytes for $handle")
                             call.respond(HttpStatusCode.NotFound)
                         }
                     } catch (e: Exception) {
+                        Log.e("PixStreamo_Trace", "LocalServer: Decryption/Streaming FATAL ERROR", e)
                         call.respond(HttpStatusCode.InternalServerError)
                     }
                 }
@@ -70,28 +84,10 @@ class LocalStreamServer(private val repository: MegaRepository) {
         
         try {
             server?.start(wait = false)
+            Log.d("PixStreamo_Trace", "LocalServer: BROADCASTER FULLY ACTIVE AT ${getBaseUrl()}")
         } catch (e: Exception) {
-            Log.e("PixStreamo", "Server Start Failed", e)
+            Log.e("PixStreamo_Trace", "LocalServer: CRITICAL STARTUP FAILURE", e)
         }
-    }
-
-    private fun createLoadingImage(): ByteArray {
-        val bitmap = Bitmap.createBitmap(1280, 720, Bitmap.Config.ARGB_8888)
-        val canvas = Canvas(bitmap)
-        canvas.drawColor(Color.BLACK)
-        
-        val paint = Paint().apply {
-            color = Color.WHITE
-            textSize = 60f
-            textAlign = Paint.Align.CENTER
-            isAntiAlias = true
-        }
-        
-        canvas.drawText("PixStreamo: Loading Image...", 640f, 360f, paint)
-        
-        val stream = ByteArrayOutputStream()
-        bitmap.compress(Bitmap.CompressFormat.JPEG, 80, stream)
-        return stream.toByteArray()
     }
 
     fun stop() {
@@ -104,19 +100,40 @@ class LocalStreamServer(private val repository: MegaRepository) {
     private fun getIpAddress(): String {
         try {
             val interfaces = NetworkInterface.getNetworkInterfaces()?.toList() ?: emptyList()
+            
+            val allIps = mutableListOf<String>()
+            interfaces.forEach { iface ->
+                iface.inetAddresses.toList().forEach { addr ->
+                    if (!addr.isLoopbackAddress && addr is InetAddress && addr.address.size == 4) {
+                        allIps.add("${iface.name}:${addr.hostAddress}")
+                    }
+                }
+            }
+            Log.d("PixStreamo_Trace", "All Detected IPs: $allIps")
+
+            // 1. Prioritize Wi-Fi (wlan)
             val wifiAddr = interfaces.filter { it.name.lowercase().contains("wlan") }
                 .flatMap { it.inetAddresses.toList() }
                 .firstOrNull { !it.isLoopbackAddress && it is InetAddress && it.address.size == 4 }
             
-            if (wifiAddr != null) return wifiAddr.hostAddress ?: "127.0.0.1"
+            if (wifiAddr != null) {
+                val ip = wifiAddr.hostAddress ?: "127.0.0.1"
+                Log.d("PixStreamo_Trace", "Selected Wi-Fi IP: $ip")
+                return ip
+            }
 
+            // 2. Fallback to any non-p2p address
             val anyAddr = interfaces.filter { !it.name.lowercase().contains("p2p") }
                 .flatMap { it.inetAddresses.toList() }
                 .firstOrNull { !it.isLoopbackAddress && it is InetAddress && it.address.size == 4 }
                 
-            return anyAddr?.hostAddress ?: "127.0.0.1"
+            val finalIp = anyAddr?.hostAddress ?: "127.0.0.1"
+            Log.d("PixStreamo_Trace", "Selected Fallback IP: $finalIp")
+            return finalIp
+            
         } catch (e: Exception) {
-            return "127.0.0.1"
+            Log.e("PixStreamo_Trace", "IP lookup failed", e)
         }
+        return "127.0.0.1"
     }
 }

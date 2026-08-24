@@ -4,127 +4,200 @@
 package com.example.pixstreamo_m.ui
 
 import android.app.Application
+import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
+import android.content.ServiceConnection
+import android.os.IBinder
+import android.util.Log
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import coil.ImageLoader
-import com.example.pixstreamo_m.mega.LocalStreamServer
-import com.example.pixstreamo_m.mega.MegaImageNode
-import com.example.pixstreamo_m.mega.StreamManager
+import com.example.pixstreamo_m.mega.*
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
-import kotlin.time.Duration.Companion.seconds
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 
 class SharedViewModel(application: Application) : AndroidViewModel(application) {
-    private val _currentNodes = MutableStateFlow<List<MegaImageNode>>(emptyList())
-    val currentNodes: StateFlow<List<MegaImageNode>> = _currentNodes
+    
+    private val TAG = "PixStreamo_Debug"
+
+    // Core Gallery Data
+    private val _gridNodes = MutableStateFlow<List<MegaImageNode>>(emptyList())
+    val gridNodes: StateFlow<List<MegaImageNode>> = _gridNodes
+
+    private val _activeFolderUrlFlow = MutableStateFlow<String?>(null)
+    var activeFolderUrl: String? 
+        get() = _activeFolderUrlFlow.value
+        set(value) { _activeFolderUrlFlow.value = value }
 
     private val _currentIndex = MutableStateFlow(0)
     val currentIndex: StateFlow<Int> = _currentIndex
 
+    // Slideshow States
     private val _isSlideshowActive = MutableStateFlow(false)
     val isSlideshowActive: StateFlow<Boolean> = _isSlideshowActive
 
     private val _isSlideshowPaused = MutableStateFlow(false)
     val isSlideshowPaused: StateFlow<Boolean> = _isSlideshowPaused
 
-    var activeFolderUrl: String? = null
+    private val _isPreparing = MutableStateFlow(false)
+    val isPreparing: StateFlow<Boolean> = _isPreparing
+
+    private val _preparedCount = MutableStateFlow(0)
+    val preparedCount: StateFlow<Int> = _preparedCount
+
     var gridImageLoader: ImageLoader? = null
     var fullImageLoader: ImageLoader? = null
-    
+
     var localStreamServer: LocalStreamServer? = null
-    var streamManager: StreamManager? = null
+    var megaRepository: MegaRepository? = null
+
+    // Use a flow to track streamManager changes
+    private val _streamManagerFlow = MutableStateFlow<StreamManager?>(null)
+    var streamManager: StreamManager?
+        get() = _streamManagerFlow.value
+        set(value) { _streamManagerFlow.value = value }
     
-    private var slideshowJob: Job? = null
-    
+    private var slideshowService: SlideshowService? = null
+    private var isServiceBound = false
+    private var preloadJob: Job? = null
+
+    private val serviceConnection = object : ServiceConnection {
+        override fun onServiceConnected(name: ComponentName?, service: IBinder?) {
+            val binder = service as SlideshowService.LocalBinder
+            slideshowService = binder.getService()
+            isServiceBound = true
+        }
+        override fun onServiceDisconnected(name: ComponentName?) {
+            slideshowService = null
+            isServiceBound = false
+        }
+    }
+
     init {
-        // Observe index changes and trigger cast automatically if connected
+        val intent = Intent(application, SlideshowService::class.java)
+        application.bindService(intent, serviceConnection, Context.BIND_AUTO_CREATE)
+
+        // Index change -> Cast command
         viewModelScope.launch {
             _currentIndex.collectLatest { index ->
-                val nodes = _currentNodes.value
-                val folderUrl = activeFolderUrl
-                if (folderUrl != null && index in nodes.indices) {
-                    castImage(getApplication(), nodes[index], folderUrl)
-                }
+                triggerCast(index)
             }
         }
-        
-        // Deep Dive Fix: Re-trigger cast when connection is established
+
+        // Connection established -> Cast current image immediately
         viewModelScope.launch {
-            streamManager?.isConnected?.collectLatest { connected ->
-                if (connected) {
-                    val nodes = _currentNodes.value
-                    val index = _currentIndex.value
-                    val folderUrl = activeFolderUrl
-                    if (folderUrl != null && index in nodes.indices) {
-                        castImage(getApplication(), nodes[index], folderUrl)
+            _streamManagerFlow.filterNotNull().flatMapLatest { it.isConnected }
+                .collectLatest { connected ->
+                    if (connected) {
+                        triggerCast(_currentIndex.value)
                     }
                 }
-            }
+        }
+    }
+
+    private fun triggerCast(index: Int) {
+        val nodes = _gridNodes.value
+        val url = activeFolderUrl
+        if (url != null && index in nodes.indices) {
+            castImage(getApplication(), nodes[index], url)
         }
     }
 
     fun setNodes(nodes: List<MegaImageNode>) {
-        _currentNodes.value = nodes
-    }
-
-    fun setCurrentIndex(index: Int) {
-        _currentIndex.value = index
-    }
-
-    fun toggleSlideshow(active: Boolean) {
-        _isSlideshowActive.value = active
-        if (active) startSlideshowTimer() else stopSlideshowTimer()
-    }
-
-    fun togglePause(paused: Boolean) {
-        _isSlideshowPaused.value = paused
-    }
-
-    private fun startSlideshowTimer() {
-        slideshowJob?.cancel()
-        slideshowJob = viewModelScope.launch {
-            while (true) {
-                delay(10.seconds)
-                if (!_isSlideshowPaused.value && _isSlideshowActive.value) {
-                    val nextIndex = _currentIndex.value + 1
-                    if (nextIndex < _currentNodes.value.size) {
-                        _currentIndex.value = nextIndex
-                    } else {
-                        _isSlideshowActive.value = false
-                        break
-                    }
-                }
-            }
+        if (nodes.isNotEmpty() || _gridNodes.value.isEmpty()) {
+            _gridNodes.value = nodes
         }
     }
 
-    private fun stopSlideshowTimer() {
-        slideshowJob?.cancel()
-        slideshowJob = null
+    fun setCurrentIndex(index: Int) {
+        if (_currentIndex.value != index) {
+            _currentIndex.value = index
+        }
+    }
+
+    fun toggleSlideshow(active: Boolean) {
+        if (active) {
+            startPreloadingSequence()
+        } else {
+            stopSlideshowInternal()
+        }
+    }
+    
+    fun togglePause() {
+        _isSlideshowPaused.value = !_isSlideshowPaused.value
+    }
+
+    private fun startPreloadingSequence() {
+        val nodes = _gridNodes.value
+        val url = activeFolderUrl ?: return
+        val repo = megaRepository ?: return
+        val targetCount = minOf(nodes.size, 50)
+
+        preloadJob?.cancel()
+        preloadJob = viewModelScope.launch {
+            _isPreparing.value = true
+            _preparedCount.value = 0
+            
+            nodes.take(targetCount).forEach { node ->
+                if (!repo.isImageCached(node.handle, isThumbnail = false)) {
+                    try {
+                        withContext(kotlinx.coroutines.Dispatchers.IO) {
+                            withTimeout(30000L) {
+                                while (repo.isUrgentWaiting()) { delay(500) }
+                                repo.decryptImage(node.handle, node.key, url, isThumbnail = false)
+                                repo.decryptImage(node.handle, node.key, url, isThumbnail = true)
+                            }
+                        }
+                    } catch (e: Exception) {}
+                }
+                _preparedCount.value += 1
+            }
+            
+            _isPreparing.value = false
+            _isSlideshowActive.value = true
+            startServiceTimer()
+        }
+    }
+
+    private fun stopSlideshowInternal() {
+        preloadJob?.cancel()
+        _isPreparing.value = false
+        _isSlideshowActive.value = false
+        _isSlideshowPaused.value = false
+        slideshowService?.stopSlideshow()
+    }
+
+    private fun startServiceTimer() {
+        slideshowService?.startSlideshow(10000L) {
+            if (!_isSlideshowPaused.value && _isSlideshowActive.value) {
+                val nextIndex = _currentIndex.value + 1
+                if (nextIndex < _gridNodes.value.size && nextIndex < 50) {
+                    _currentIndex.value = nextIndex
+                } else {
+                    stopSlideshowInternal()
+                }
+            }
+        }
     }
 
     fun castImage(context: Context, node: MegaImageNode, folderUrl: String) {
         val server = localStreamServer ?: return
         val manager = streamManager ?: return
-        
-        // Only cast if actually connected to a device
         if (manager.isConnected.value) {
-            // Show loading screen on TV immediately
-            val loadingUrl = "${server.getBaseUrl()}/loading.jpg"
-            manager.sendCustomUrl(loadingUrl, "Loading...")
-            
-            // Then send actual image
             manager.sendImage(context, node, folderUrl, server.getBaseUrl())
         }
     }
 
     override fun onCleared() {
         super.onCleared()
-        stopSlideshowTimer()
+        stopSlideshowInternal()
+        if (isServiceBound) {
+            getApplication<Application>().unbindService(serviceConnection)
+        }
     }
 }

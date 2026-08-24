@@ -25,7 +25,6 @@ import androidx.compose.ui.unit.sp
 import com.example.pixstreamo_m.R
 import com.example.pixstreamo_m.data.AppDatabase
 import com.example.pixstreamo_m.data.FolderEntity
-
 import com.example.pixstreamo_m.mega.StreamManager
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -55,7 +54,7 @@ fun FolderListScreen(
                     )
                 },
                 actions = {
-                    CastButton(streamManager = streamManager, modifier = Modifier.size(40.dp), tint = Color.White)
+                    CastButton(streamManager = streamManager, modifier = Modifier.size(40.dp))
                     IconButton(onClick = onSettingsClick) {
                         Icon(
                             painter = painterResource(R.drawable.ic_setting), 
@@ -122,7 +121,7 @@ fun FolderCard(folder: FolderEntity, onClick: () -> Unit) {
         border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.1f))
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            // Subtle glow/gradient background
+            // Subtle teal glow
             Box(
                 modifier = Modifier
                     .fillMaxSize()

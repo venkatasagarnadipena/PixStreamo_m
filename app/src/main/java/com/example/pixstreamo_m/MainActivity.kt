@@ -13,6 +13,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.lifecycle.lifecycleScope
 import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -21,15 +22,17 @@ import androidx.navigation.navArgument
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Build
+import android.util.Log
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import com.example.pixstreamo_m.ui.SharedViewModel
 import com.example.pixstreamo_m.ui.*
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 class MainActivity : FragmentActivity() {
+
+    private var permissionsGranted = mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -46,19 +49,26 @@ class MainActivity : FragmentActivity() {
                 val navController = rememberNavController()
                 val sharedViewModel: SharedViewModel = viewModel()
                 val context = LocalContext.current
-                val scope = rememberCoroutineScope()
+                val isGranted by permissionsGranted
                 
                 // Sync services to VM
                 if (sharedViewModel.localStreamServer == null) {
                     sharedViewModel.localStreamServer = app.localStreamServer
                     sharedViewModel.streamManager = app.streamManager
+                    sharedViewModel.megaRepository = app.megaRepository
                 }
                 
-                LaunchedEffect(Unit) {
-                    streamManager.initialize(context)
+                // Permission-Aware SDK Start
+                // Only initialize Cast SDK after permissions are confirmed
+                LaunchedEffect(isGranted) {
+                    if (isGranted) {
+                        Log.d("PixStreamo_Debug", "MainActivity: Permissions confirmed. Initializing Cast SDK.")
+                        streamManager.initialize(context)
+                    } else {
+                        Log.d("PixStreamo_Debug", "MainActivity: Waiting for permissions...")
+                    }
                 }
                 
-                val currentNodes by sharedViewModel.currentNodes.collectAsState()
                 val isConfigured = preferenceManager.isConfigured()
                 val startDestination = if (isConfigured) "folder_list" else "config"
                 
@@ -84,33 +94,34 @@ class MainActivity : FragmentActivity() {
                         )
                     }
                     composable("settings") {
-                    SettingsScreen(
-                        cacheManager = app.cacheManager,
-                        preferenceManager = preferenceManager,
-                        database = database,
-                        onBackClick = { navController.popBackStack() },
-                        onAddNewClick = { navController.navigate("add_new_source") },
-                        onResetConfig = {
-                            scope.launch(Dispatchers.IO) {
-                                database.folderDao().deleteAllFolders()
-                                preferenceManager.clearConfig()
-                                withContext(Dispatchers.Main) {
+                        SettingsScreen(
+                            cacheManager = app.cacheManager,
+                            preferenceManager = preferenceManager,
+                            database = database,
+                            onBackClick = { navController.popBackStack() },
+                            onAddNewClick = { navController.navigate("add_new_source") },
+                            onResetConfig = {
+                                @Suppress("DEPRECATION")
+                                lifecycleScope.launchWhenStarted {
+                                    withContext(Dispatchers.IO) {
+                                        database.folderDao().deleteAllFolders()
+                                        preferenceManager.clearConfig()
+                                    }
                                     navController.navigate("config") { popUpTo(0) }
                                 }
                             }
-                        }
-                    )
-                }
-                composable("add_new_source") {
-                    ConfigScreen(
-                        preferenceManager = preferenceManager,
-                        database = database,
-                        megaRepository = megaRepository,
-                        isAppendMode = true,
-                        onConfigComplete = { navController.popBackStack() },
-                        onBackClick = { navController.popBackStack() }
-                    )
-                }
+                        )
+                    }
+                    composable("add_new_source") {
+                        ConfigScreen(
+                            preferenceManager = preferenceManager,
+                            database = database,
+                            megaRepository = megaRepository,
+                            isAppendMode = true,
+                            onConfigComplete = { navController.popBackStack() },
+                            onBackClick = { navController.popBackStack() }
+                        )
+                    }
                     composable(
                         "image_grid/{folderId}",
                         arguments = listOf(navArgument("folderId") { type = NavType.IntType })
@@ -169,7 +180,7 @@ class MainActivity : FragmentActivity() {
                         } else {
                             ImageViewerScreen(
                                 initialIndex = index,
-                                nodes = currentNodes,
+                                nodes = sharedViewModel.gridNodes.collectAsState().value,
                                 folderUrl = folderUrl!!,
                                 megaRepository = megaRepository,
                                 streamManager = streamManager,
@@ -183,6 +194,12 @@ class MainActivity : FragmentActivity() {
         }
     }
 
+    private val requestPermissionLauncher = registerForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions()
+    ) { results ->
+        permissionsGranted.value = results.values.all { it }
+    }
+
     private fun checkAndRequestPermissions() {
         val permissions = mutableListOf(
             Manifest.permission.ACCESS_FINE_LOCATION,
@@ -192,17 +209,14 @@ class MainActivity : FragmentActivity() {
             permissions.add(Manifest.permission.NEARBY_WIFI_DEVICES)
         }
 
-        val requestPermissionLauncher = registerForActivityResult(
-            ActivityResultContracts.RequestMultiplePermissions()
-        ) { _ ->
+        val allGranted = permissions.all {
+            ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
         }
 
-        val missing = permissions.filter {
-            ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
-        }
-
-        if (missing.isNotEmpty()) {
-            requestPermissionLauncher.launch(missing.toTypedArray())
+        if (allGranted) {
+            permissionsGranted.value = true
+        } else {
+            requestPermissionLauncher.launch(permissions.toTypedArray())
         }
     }
 }

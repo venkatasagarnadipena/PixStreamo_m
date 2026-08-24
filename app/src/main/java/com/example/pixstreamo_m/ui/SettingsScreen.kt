@@ -91,7 +91,7 @@ fun SettingsScreen(
             SettingsActionCard(
                 title = "Folder Management",
                 subtitle = "Edit or remove existing sources",
-                icon = Icons.Default.List,
+                icon = painterResource(R.drawable.ic_filemanager),
                 onClick = { showFolderManager = true }
             )
             
@@ -120,14 +120,13 @@ fun SettingsScreen(
                     val mode = preferenceManager.getCacheMode()
                     if (mode == CacheManager.StorageMode.CUSTOM.name) {
                         val uri = preferenceManager.getCacheUri() ?: "Not selected"
-                        // Clean up URI for display (remove document/%3A etc)
                         val displayName = Uri.decode(uri).split("/").lastOrNull() ?: uri
                         "Custom: $displayName"
                     } else {
                         "Current: $mode"
                     }
                 },
-                icon = Icons.Default.Storage,
+                icon = painterResource(R.drawable.ic_filemanager),
                 onClick = { showStorageDialog = true }
             )
 
@@ -286,7 +285,7 @@ fun StorageLocationDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Cancel") }
+            TextButton(onClick = onDismiss) { Text("Cancel", color = Color.Gray) }
         }
     )
 }
