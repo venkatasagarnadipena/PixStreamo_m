@@ -1,12 +1,5 @@
 /**
- * PixStreamo Global Settings Screen
- *
- * Provides user control over storage and application state.
- * Responsible for:
- * 1. Selecting Cache Storage mode (Internal, SD Card, etc).
- * 2. Launching the System Folder Picker for custom cache locations.
- * 3. Displaying current cache usage and providing a cleanup tool.
- * 4. Allowing the user to reset the entire Master URL configuration.
+ * PixStreamo Modern Settings Screen
  */
 package com.example.pixstreamo_m.ui
 
@@ -14,119 +7,199 @@ import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.selection.selectable
-import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.example.pixstreamo_m.R
 import com.example.pixstreamo_m.data.PreferenceManager
 import com.example.pixstreamo_m.mega.CacheManager
+import com.example.pixstreamo_m.data.AppDatabase
+import com.example.pixstreamo_m.data.FolderEntity
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     cacheManager: CacheManager,
     preferenceManager: PreferenceManager,
+    database: AppDatabase,
     onBackClick: () -> Unit,
+    onAddNewClick: () -> Unit,
     onResetConfig: () -> Unit
 ) {
-    val context = LocalContext.current
-    var selectedMode by remember { mutableStateOf(preferenceManager.getCacheMode()) }
-    var cacheUri by remember { mutableStateOf(preferenceManager.getCacheUri()) }
+    var showFolderManager by remember { mutableStateOf(false) }
     var cacheSize by remember { mutableLongStateOf(cacheManager.getCacheSize()) }
-
-    val folderPicker = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocumentTree()
-    ) { uri: Uri? ->
-        uri?.let {
-            val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-            context.contentResolver.takePersistableUriPermission(it, flags)
-            
-            preferenceManager.setCacheUri(it.toString())
-            preferenceManager.setCacheMode(CacheManager.StorageMode.CUSTOM.name)
-            cacheUri = it.toString()
-            selectedMode = CacheManager.StorageMode.CUSTOM.name
-            cacheSize = cacheManager.getCacheSize()
-        }
-    }
+    val scope = rememberCoroutineScope()
 
     Scaffold(
+        containerColor = Color.Black,
         topBar = {
             TopAppBar(
-                title = { Text("Settings") },
+                title = { Text("Settings", fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBackClick) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(painterResource(R.drawable.ic_back), contentDescription = "Back")
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Black, titleContentColor = Color.White)
             )
         }
     ) { padding ->
         Column(
-            modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp)
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(padding)
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text(text = "Cache Storage", style = MaterialTheme.typography.titleMedium)
-            Text(text = "Select where to store decrypted images to save internal space.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            // Main Actions Section
+            Text("Management", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
             
-            Spacer(modifier = Modifier.height(16.dp))
-
-            val modes = listOf(
-                CacheManager.StorageMode.AUTO to "Auto (External > Internal)",
-                CacheManager.StorageMode.EXTERNAL to "External Storage (SD Card)",
-                CacheManager.StorageMode.INTERNAL to "Internal Storage",
-                CacheManager.StorageMode.CUSTOM to "Custom Folder (Select...)",
-                CacheManager.StorageMode.RAM to "No Cache (RAM Only)"
+            SettingsActionCard(
+                title = "Folder Management",
+                subtitle = "View and remove synced folders",
+                icon = painterResource(R.drawable.ic_filemanager),
+                onClick = { showFolderManager = true }
+            )
+            
+            SettingsActionCard(
+                title = "Add New URL",
+                subtitle = "Append more MEGA folders to your stream",
+                icon = Icons.Default.Add,
+                onClick = onAddNewClick
             )
 
-            Column(Modifier.selectableGroup()) {
-                modes.forEach { (mode, label) ->
-                    Row(
-                        Modifier.fillMaxWidth().height(56.dp)
-                            .selectable(
-                                selected = (selectedMode == mode.name),
-                                onClick = { if (mode == CacheManager.StorageMode.CUSTOM) { folderPicker.launch(null) } else { selectedMode = mode.name; preferenceManager.setCacheMode(mode.name); cacheSize = cacheManager.getCacheSize() } },
-                                role = Role.RadioButton
-                            )
-                            .padding(horizontal = 16.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        RadioButton(selected = (selectedMode == mode.name), onClick = null)
-                        Column(modifier = Modifier.padding(start = 16.dp)) {
-                            Text(text = label, style = MaterialTheme.typography.bodyLarge)
-                            if (mode == CacheManager.StorageMode.CUSTOM && cacheUri != null) {
-                                Text(text = cacheUri!!, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.primary, maxLines = 1)
-                            }
-                        }
-                    }
-                }
-            }
+            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = Color.DarkGray)
 
-            HorizontalDivider(modifier = Modifier.padding(vertical = 16.dp))
-
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Column {
-                    Text(text = "Cache Usage", style = MaterialTheme.typography.titleMedium)
-                    Text(text = formatFileSize(cacheSize), style = MaterialTheme.typography.bodyMedium)
+            Text("Storage", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+            
+            SettingsActionCard(
+                title = "Clear Cache",
+                subtitle = "Current usage: ${formatFileSize(cacheSize)}",
+                icon = Icons.Default.Delete,
+                onClick = { 
+                    cacheManager.clearAllCache()
+                    cacheSize = 0
                 }
-                Button(onClick = { cacheManager.clearAllCache(); cacheSize = 0 }) { Text("Clear Cache") }
-            }
+            )
 
             Spacer(modifier = Modifier.weight(1f))
 
-            OutlinedButton(onClick = onResetConfig, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error)) { Text("Reset Configuration") }
+            // Danger Zone
+            Text("Danger Zone", style = MaterialTheme.typography.labelLarge, color = Color.Red)
+            SettingsActionCard(
+                title = "Config Reset",
+                subtitle = "Wipe all URLs and folders from database",
+                icon = painterResource(R.drawable.ic_reset),
+                iconTint = Color.Red,
+                onClick = onResetConfig
+            )
         }
     }
+
+    if (showFolderManager) {
+        FolderManagerDialog(
+            database = database,
+            onDismiss = { showFolderManager = false }
+        )
+    }
+}
+
+@Composable
+fun SettingsActionCard(
+    title: String,
+    subtitle: String,
+    icon: Any,
+    iconTint: Color = MaterialTheme.colorScheme.primary,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onClick() },
+        shape = RoundedCornerShape(16.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF121212))
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .background(iconTint.copy(alpha = 0.1f), RoundedCornerShape(12.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                when (icon) {
+                    is ImageVector -> Icon(icon, null, tint = iconTint)
+                    is androidx.compose.ui.graphics.painter.Painter -> Icon(icon, null, tint = iconTint)
+                }
+            }
+            Spacer(Modifier.width(16.dp))
+            Column {
+                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = Color.White)
+                Text(subtitle, style = MaterialTheme.typography.bodySmall, color = Color.Gray)
+            }
+        }
+    }
+}
+
+@Composable
+fun FolderManagerDialog(database: AppDatabase, onDismiss: () -> Unit) {
+    val folders by database.folderDao().getAllFolders().collectAsState(initial = emptyList())
+    val scope = rememberCoroutineScope()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Color(0xFF1A1A1A),
+        title = { Text("Manage Folders", color = Color.White) },
+        text = {
+            if (folders.isEmpty()) {
+                Text("No folders found.", color = Color.Gray)
+            } else {
+                LazyColumn(modifier = Modifier.heightIn(max = 400.dp)) {
+                    items(folders) { folder ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(folder.name, color = Color.White, fontWeight = FontWeight.Medium)
+                                Text(folder.url, color = Color.Gray, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+                            }
+                            IconButton(onClick = { 
+                                scope.launch(Dispatchers.IO) { database.folderDao().deleteFolder(folder) }
+                            }) {
+                                Icon(Icons.Default.Close, null, tint = Color.Red)
+                            }
+                        }
+                        HorizontalDivider(color = Color.DarkGray.copy(alpha = 0.5f))
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Done") }
+        }
+    )
 }
 
 fun formatFileSize(size: Long): String {

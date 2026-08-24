@@ -1,22 +1,22 @@
 /**
- * PixStreamo Configuration Screen
- *
- * The first screen shown to a new user. 
- * Responsible for:
- * 1. Taking a Master MEGA/JSON URL.
- * 2. Fetching and parsing the initial folder list.
- * 3. Initializing the Room Database with the folder configuration.
+ * PixStreamo Modern Configuration Screen
  */
 package com.example.pixstreamo_m.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.example.pixstreamo_m.R
 import com.example.pixstreamo_m.data.PreferenceManager
 import com.example.pixstreamo_m.data.AppDatabase
 import com.example.pixstreamo_m.mega.MegaRepository
@@ -30,17 +30,28 @@ fun ConfigScreen(
     preferenceManager: PreferenceManager,
     database: AppDatabase,
     megaRepository: MegaRepository,
-    onConfigComplete: () -> Unit
+    isAppendMode: Boolean = false,
+    onConfigComplete: () -> Unit,
+    onBackClick: (() -> Unit)? = null
 ) {
-    var url by remember { mutableStateOf(preferenceManager.getConfigUrl() ?: "") }
+    var url by remember { mutableStateOf("") }
     var isLoading by remember { mutableStateOf(false) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
 
     Scaffold(
+        containerColor = Color.Black,
         topBar = {
-            TopAppBar(title = { Text("PixStreamo Setup") })
+            TopAppBar(
+                title = { Text(if (isAppendMode) "Add Source" else "Project Setup", fontWeight = FontWeight.Bold) },
+                navigationIcon = {
+                    if (onBackClick != null) {
+                        IconButton(onClick = onBackClick) { Icon(painterResource(R.drawable.ic_back), "Back") }
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Black, titleContentColor = Color.White)
+            )
         }
     ) { padding ->
         Column(
@@ -49,22 +60,44 @@ fun ConfigScreen(
                 .padding(padding)
                 .padding(24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+            verticalArrangement = Arrangement.Top
         ) {
+            Spacer(Modifier.height(40.dp))
+            
+            Box(
+                modifier = Modifier
+                    .size(80.dp)
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f), RoundedCornerShape(24.dp)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.ic_launcher_foreground),
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(48.dp)
+                )
+            }
+            
+            Spacer(Modifier.height(24.dp))
+            
             Text(
-                text = "Connect to your Stream",
-                style = MaterialTheme.typography.headlineMedium,
-                textAlign = TextAlign.Center
+                text = if (isAppendMode) "Add New Stream Source" else "Connect to your Stream",
+                style = MaterialTheme.typography.headlineSmall,
+                textAlign = TextAlign.Center,
+                color = Color.White,
+                fontWeight = FontWeight.Bold
             )
-            Spacer(modifier = Modifier.height(8.dp))
+            
+            Spacer(Modifier.height(8.dp))
+            
             Text(
-                text = "Enter a MEGA folder link, file link, or JSON URL to load your gallery.",
+                text = "Enter a MEGA folder link or configuration URL.",
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = Color.Gray,
                 textAlign = TextAlign.Center
             )
             
-            Spacer(modifier = Modifier.height(32.dp))
+            Spacer(Modifier.height(40.dp))
             
             OutlinedTextField(
                 value = url,
@@ -72,12 +105,17 @@ fun ConfigScreen(
                     url = it
                     errorMessage = null 
                 },
-                label = { Text("MEGA Folder or Config URL") },
+                label = { Text("URL") },
                 placeholder = { Text("https://mega.nz/folder/...") },
                 modifier = Modifier.fillMaxWidth(),
                 isError = errorMessage != null,
-                singleLine = false, // Allow multi-line for long URLs
-                maxLines = 3,
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                    unfocusedBorderColor = Color.DarkGray,
+                    focusedLabelColor = MaterialTheme.colorScheme.primary,
+                    unfocusedLabelColor = Color.Gray
+                ),
+                shape = RoundedCornerShape(16.dp),
                 enabled = !isLoading
             )
             
@@ -86,12 +124,11 @@ fun ConfigScreen(
                     text = errorMessage!!,
                     color = MaterialTheme.colorScheme.error,
                     style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(top = 8.dp).fillMaxWidth(),
-                    textAlign = TextAlign.Start
+                    modifier = Modifier.padding(top = 8.dp).fillMaxWidth()
                 )
             }
             
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(Modifier.height(32.dp))
             
             Button(
                 onClick = {
@@ -108,10 +145,10 @@ fun ConfigScreen(
                                 megaRepository.fetchConfig(trimmedUrl, context.cacheDir.absolutePath)
                             }
                             withContext(Dispatchers.IO) {
-                                database.folderDao().deleteAllFolders()
+                                if (!isAppendMode) database.folderDao().deleteAllFolders()
                                 database.folderDao().insertFolders(folders)
                             }
-                            preferenceManager.setConfigUrl(trimmedUrl)
+                            if (!isAppendMode) preferenceManager.setConfigUrl(trimmedUrl)
                             onConfigComplete()
                         } catch (e: Exception) {
                             errorMessage = "${e.message}"
@@ -120,27 +157,14 @@ fun ConfigScreen(
                         }
                     }
                 },
-                modifier = Modifier.fillMaxWidth().height(50.dp),
-                enabled = !isLoading
+                modifier = Modifier.fillMaxWidth().height(56.dp),
+                enabled = !isLoading,
+                shape = RoundedCornerShape(16.dp)
             ) {
                 if (isLoading) {
-                    CircularProgressIndicator(
-                        modifier = Modifier.size(24.dp),
-                        color = MaterialTheme.colorScheme.onPrimary,
-                        strokeWidth = 2.dp
-                    )
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp), color = Color.Black, strokeWidth = 2.dp)
                 } else {
-                    Text("Initialize Project")
-                }
-            }
-            
-            if (preferenceManager.isConfigured()) {
-                TextButton(
-                    onClick = onConfigComplete,
-                    modifier = Modifier.padding(top = 16.dp),
-                    enabled = !isLoading
-                ) {
-                    Text("Skip to Folders")
+                    Text(if (isAppendMode) "Add Source" else "Initialize Project", fontWeight = FontWeight.Bold)
                 }
             }
         }

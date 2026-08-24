@@ -5,6 +5,7 @@ package com.example.pixstreamo_m.ui
 
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
@@ -18,6 +19,26 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import com.example.pixstreamo_m.mega.StreamManager
+
+@Composable
+fun PixStreamoTheme(
+    content: @Composable () -> Unit
+) {
+    val darkColors = darkColorScheme(
+        primary = Color(0xFF3DDC84),
+        onPrimary = Color.Black,
+        background = Color.Black,
+        onBackground = Color.White,
+        surface = Color(0xFF121212),
+        onSurface = Color.White,
+        error = Color(0xFFCF6679)
+    )
+
+    MaterialTheme(
+        colorScheme = darkColors,
+        content = content
+    )
+}
 
 /**
  * A Custom Compose-Based Cast Button and Device Picker.

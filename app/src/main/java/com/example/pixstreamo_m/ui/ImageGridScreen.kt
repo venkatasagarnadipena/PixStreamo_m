@@ -1,9 +1,8 @@
 /**
- * PixStreamo Image Grid Screen
+ * PixStreamo Modern Image Grid Screen
  */
 package com.example.pixstreamo_m.ui
 
-import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -11,24 +10,25 @@ import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.ImageLoader
 import coil.compose.AsyncImage
 import coil.memory.MemoryCache
-import com.example.pixstreamo_m.mega.MegaFetcher
-import com.example.pixstreamo_m.mega.MegaImageNode
-import com.example.pixstreamo_m.mega.MegaRepository
-import com.example.pixstreamo_m.mega.StreamManager
+import com.example.pixstreamo_m.R
+import com.example.pixstreamo_m.mega.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.launch
@@ -61,7 +61,7 @@ fun ImageGridScreen(
             sharedViewModel.activeFolderUrl = folderUrl
         }
         sharedViewModel.gridImageLoader ?: run {
-            val dispatcher = Executors.newFixedThreadPool(3).asCoroutineDispatcher()
+            val dispatcher = Executors.newFixedThreadPool(2).asCoroutineDispatcher()
             val loader = ImageLoader.Builder(context.applicationContext)
                 .interceptorDispatcher(dispatcher)
                 .fetcherDispatcher(dispatcher)
@@ -115,38 +115,40 @@ fun ImageGridScreen(
     }
 
     Scaffold(
+        containerColor = Color.Black,
         topBar = {
             TopAppBar(
                 title = { 
                     Column {
-                        Text(folderName, style = MaterialTheme.typography.titleMedium)
+                        Text(folderName, style = MaterialTheme.typography.titleMedium, color = Color.White, fontWeight = FontWeight.Bold)
                         if (allNodes.isNotEmpty()) {
-                            Text("${displayedNodes.size} / ${allNodes.size} items", style = MaterialTheme.typography.labelSmall)
+                            Text("${allNodes.size} items", style = MaterialTheme.typography.labelSmall, color = Color.Gray)
                         }
                     }
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBackClick) { Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back") }
+                    IconButton(onClick = onBackClick) { Icon(painterResource(R.drawable.ic_back), "Back", tint = Color.White) }
                 },
                 actions = {
                     CastButton(streamManager = streamManager, modifier = Modifier.size(40.dp))
                     IconButton(onClick = { loadNodes() }, enabled = !isLoading) {
-                        Icon(Icons.Default.Refresh, contentDescription = "Refresh")
+                        Icon(painterResource(R.drawable.ic_sync), "Refresh", tint = MaterialTheme.colorScheme.primary)
                     }
-                }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Black.copy(alpha = 0.8f))
             )
         }
     ) { paddingValues ->
         Box(modifier = Modifier.fillMaxSize().padding(paddingValues)) {
             if (isLoading && displayedNodes.isEmpty()) {
-                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+                CircularProgressIndicator(modifier = Modifier.align(Alignment.Center), color = MaterialTheme.colorScheme.primary)
             } else if (errorMessage != null && displayedNodes.isEmpty()) {
                 Column(
                     modifier = Modifier.fillMaxSize().padding(32.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
                 ) {
-                    Text(text = errorMessage!!)
+                    Text(text = errorMessage!!, color = Color.White)
                     Spacer(modifier = Modifier.height(16.dp))
                     Button(onClick = { loadNodes() }) { Text("Retry") }
                 }
@@ -155,40 +157,53 @@ fun ImageGridScreen(
                     state = gridState,
                     columns = GridCells.Adaptive(110.dp),
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(4.dp)
+                    contentPadding = PaddingValues(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     itemsIndexed(displayedNodes) { index, node ->
-                        Card(
-                            modifier = Modifier.padding(4.dp).aspectRatio(1f).clickable { onImageClick(allNodes, index) },
-                            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-                        ) {
-                            AsyncImage(
-                                model = node,
-                                contentDescription = node.name,
-                                imageLoader = imageLoader,
-                                modifier = Modifier.fillMaxSize(),
-                                contentScale = ContentScale.Crop
-                            )
-                        }
+                        ImageCard(
+                            node = node, 
+                            imageLoader = imageLoader,
+                            onClick = { onImageClick(allNodes, index) }
+                        )
                     }
                 }
             }
+        }
+    }
+}
 
-            // Debug IP Overlay
-            val baseUrl = sharedViewModel.localStreamServer?.getBaseUrl() ?: "Server Not Initialized"
+@Composable
+fun ImageCard(node: MegaImageNode, imageLoader: ImageLoader, onClick: () -> Unit) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .aspectRatio(1f)
+            .clickable { onClick() },
+        shape = RoundedCornerShape(12.dp),
+        colors = CardDefaults.cardColors(containerColor = Color(0xFF121212))
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            AsyncImage(
+                model = node,
+                contentDescription = node.name,
+                imageLoader = imageLoader,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop
+            )
+            
+            // Minimal Overlay for text readability if needed
             Box(
                 modifier = Modifier
-                    .align(Alignment.BottomStart)
-                    .padding(8.dp)
-                    .background(androidx.compose.ui.graphics.Color.Black.copy(alpha = 0.7f))
-                    .padding(4.dp)
-            ) {
-                Text(
-                    text = "Base: $baseUrl",
-                    color = androidx.compose.ui.graphics.Color.Green,
-                    style = MaterialTheme.typography.labelSmall
-                )
-            }
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.4f)),
+                            startY = 150f
+                        )
+                    )
+            )
         }
     }
 }
