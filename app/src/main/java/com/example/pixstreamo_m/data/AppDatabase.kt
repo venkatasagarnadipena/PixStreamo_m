@@ -17,7 +17,8 @@ import kotlinx.coroutines.flow.Flow
 data class FolderEntity(
     @PrimaryKey(autoGenerate = true) val id: Int = 0,
     val name: String,
-    val url: String
+    val url: String,
+    val sourceUrl: String? = null // To track which config URL this folder belongs to
 )
 
 /**
@@ -36,12 +37,18 @@ interface FolderDao {
 
     @Query("DELETE FROM folders")
     suspend fun deleteAllFolders()
+
+    @Delete
+    suspend fun deleteFolder(folder: FolderEntity)
+
+    @Query("DELETE FROM folders WHERE sourceUrl = :sourceUrl")
+    suspend fun deleteFoldersBySource(sourceUrl: String)
 }
 
 /**
  * Main Room Database singleton.
  */
-@Database(entities = [FolderEntity::class], version = 1, exportSchema = false)
+@Database(entities = [FolderEntity::class], version = 2, exportSchema = false)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun folderDao(): FolderDao
 
@@ -55,7 +62,9 @@ abstract class AppDatabase : RoomDatabase() {
                     context.applicationContext,
                     AppDatabase::class.java,
                     "pixstreamo_database"
-                ).build()
+                )
+                .fallbackToDestructiveMigration()
+                .build()
                 INSTANCE = instance
                 instance
             }

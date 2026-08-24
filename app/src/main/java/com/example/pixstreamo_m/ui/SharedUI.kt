@@ -17,7 +17,28 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.pixstreamo_m.mega.StreamManager
+
+@Composable
+fun PixStreamoTheme(
+    content: @Composable () -> Unit
+) {
+    val tealColors = darkColorScheme(
+        primary = Color(0xFF2A7D69),
+        onPrimary = Color.White,
+        background = Color.Black,
+        onBackground = Color.White,
+        surface = Color(0xFF121212),
+        onSurface = Color.White,
+        error = Color(0xFFCF6679)
+    )
+
+    MaterialTheme(
+        colorScheme = tealColors,
+        content = content
+    )
+}
 
 /**
  * A Custom Compose-Based Cast Button and Device Picker.
@@ -27,17 +48,18 @@ import com.example.pixstreamo_m.mega.StreamManager
 fun CastButton(
     streamManager: StreamManager?,
     modifier: Modifier = Modifier,
-    tint: Color = LocalContentColor.current
+    tint: Color = Color.White,
+    sharedViewModel: SharedViewModel = viewModel()
 ) {
     if (streamManager == null) return
     
     val isConnected by streamManager.isConnected.collectAsState()
     val discoveredRoutes by streamManager.discoveredRoutes.collectAsState()
-    var showDialog by remember { mutableStateOf(false) }
+    val showDialog by sharedViewModel.isCastDialogOpen.collectAsState()
 
     IconButton(
         onClick = { 
-            showDialog = true 
+            sharedViewModel.setCastDialogOpen(true)
             streamManager.startDiscovery()
         },
         modifier = modifier
@@ -52,28 +74,30 @@ fun CastButton(
     if (showDialog) {
         AlertDialog(
             onDismissRequest = { 
-                showDialog = false
+                sharedViewModel.setCastDialogOpen(false)
                 streamManager.stopDiscovery()
             },
-            title = { Text("Connect to Device") },
+            containerColor = Color(0xFF1A1A1A),
+            title = { Text("Connect to Device", color = Color.White, fontWeight = androidx.compose.ui.text.font.FontWeight.Bold) },
             text = {
                 if (discoveredRoutes.isEmpty()) {
                     Box(Modifier.fillMaxWidth().height(100.dp), contentAlignment = Alignment.Center) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             CircularProgressIndicator(modifier = Modifier.size(24.dp))
                             Spacer(Modifier.height(8.dp))
-                            Text("Searching for TVs...", style = MaterialTheme.typography.bodySmall)
+                            Text("Searching for TVs...", color = Color.Gray, style = MaterialTheme.typography.bodySmall)
                         }
                     }
                 } else {
                     LazyColumn(modifier = Modifier.fillMaxWidth().heightIn(max = 300.dp)) {
                         items(discoveredRoutes) { route ->
                             ListItem(
-                                headlineContent = { Text(route.name) },
-                                leadingContent = { Icon(Icons.Default.Tv, null) },
+                                headlineContent = { Text(route.name, color = Color.White) },
+                                leadingContent = { Icon(Icons.Default.Tv, null, tint = MaterialTheme.colorScheme.primary) },
+                                colors = ListItemDefaults.colors(containerColor = Color.Transparent),
                                 modifier = Modifier.clickable {
                                     streamManager.selectRoute(route)
-                                    showDialog = false
+                                    sharedViewModel.setCastDialogOpen(false)
                                 }
                             )
                         }
@@ -84,14 +108,14 @@ fun CastButton(
                 if (isConnected) {
                     TextButton(onClick = { 
                         streamManager.disconnect()
-                        showDialog = false
+                        sharedViewModel.setCastDialogOpen(false)
                     }) {
-                        Text("Disconnect", color = MaterialTheme.colorScheme.error)
+                        Text("Disconnect Device", color = MaterialTheme.colorScheme.error)
                     }
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showDialog = false }) { Text("Cancel") }
+                TextButton(onClick = { sharedViewModel.setCastDialogOpen(false) }) { Text("Cancel", color = Color.Gray) }
             }
         )
     }

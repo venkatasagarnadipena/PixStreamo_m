@@ -36,6 +36,8 @@ class MegaRepository(private val gson: Gson, private val cacheManager: CacheMana
     // Tracking how many high-priority tasks are waiting to help low-priority tasks yield.
     private val urgentWaitingCount = AtomicInteger(0)
 
+    fun isUrgentWaiting(): Boolean = urgentWaitingCount.get() > 0
+
     fun fetchConfig(url: String, destPath: String): List<FolderEntity> {
         val body = try {
             val pyObj = engine.callAttr("fetch_config", url, destPath)
