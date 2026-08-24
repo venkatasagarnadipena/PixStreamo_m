@@ -57,6 +57,9 @@ class SharedViewModel(application: Application) : AndroidViewModel(application) 
     private val _isCleaningUp = MutableStateFlow(false)
     val isCleaningUp: StateFlow<Boolean> = _isCleaningUp
 
+    private val _gridPreloadCount = MutableStateFlow(0)
+    val gridPreloadCount: StateFlow<Int> = _gridPreloadCount
+
     // --- Services ---
     var gridImageLoader: ImageLoader? = null
     var fullImageLoader: ImageLoader? = null
@@ -127,6 +130,7 @@ class SharedViewModel(application: Application) : AndroidViewModel(application) 
             
             _isSlideshowActive.value = false
             _isPreparing.value = false
+            _gridPreloadCount.value = 0
             _gridNodes.value = emptyList()
             _currentIndex.value = 0
             cacheStart = 0
@@ -147,7 +151,14 @@ class SharedViewModel(application: Application) : AndroidViewModel(application) 
     }
 
     fun startInitialLoad() {
-        if (_gridNodes.value.isEmpty() || _isCleaningUp.value) return
+        val nodes = _gridNodes.value
+        if (nodes.isEmpty() || _isCleaningUp.value) return
+        
+        val repo = megaRepository
+        if (repo != null) {
+            _gridPreloadCount.value = nodes.take(50).count { repo.isImageCached(it.handle, isThumbnail = false) }
+        }
+        
         runQueue(0, 50)
     }
 
@@ -190,6 +201,14 @@ class SharedViewModel(application: Application) : AndroidViewModel(application) 
                                 repo.decryptImage(node.handle, node.key, url, isThumbnail = true, priority = DecryptPriority.LOW)
                             } catch (e: Exception) {}
                         }
+                        
+                        // Increment grid preload count if it's one of the first 50
+                        val nodes = _gridNodes.value
+                        val index = nodes.indexOf(node)
+                        if (index in 0 until 50) {
+                            _gridPreloadCount.value = nodes.take(50).count { repo.isImageCached(it.handle, isThumbnail = false) }
+                        }
+                        
                         if (_isPreparing.value) _preparedCount.value += 1
                     }
                 }

@@ -142,7 +142,7 @@ fun ImageViewerScreen(
                             modifier = Modifier.size(80.dp)
                         )
                         Spacer(modifier = Modifier.height(24.dp))
-                        Text("Optimizing Gallery for TV...", color = Color.White, fontWeight = FontWeight.Bold)
+                        Text("Your SlidShow Will Start Soon...", color = Color.White, fontWeight = FontWeight.Bold)
                         Text("$preparedCount / 50 ready", color = Color.Gray, style = MaterialTheme.typography.labelSmall)
                         
                         Spacer(modifier = Modifier.height(64.dp))
