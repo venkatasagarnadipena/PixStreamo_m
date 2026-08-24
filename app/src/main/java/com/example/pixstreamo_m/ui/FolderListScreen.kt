@@ -55,7 +55,7 @@ fun FolderListScreen(
                     )
                 },
                 actions = {
-                    CastButton(streamManager = streamManager, modifier = Modifier.size(40.dp))
+                    CastButton(streamManager = streamManager, modifier = Modifier.size(40.dp), tint = Color.White)
                     IconButton(onClick = onSettingsClick) {
                         Icon(
                             painter = painterResource(R.drawable.ic_setting), 

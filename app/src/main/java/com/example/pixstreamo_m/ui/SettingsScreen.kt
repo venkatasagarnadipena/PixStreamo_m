@@ -12,6 +12,8 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
@@ -23,6 +25,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.pixstreamo_m.R
@@ -46,7 +49,21 @@ fun SettingsScreen(
     onResetConfig: () -> Unit
 ) {
     var showFolderManager by remember { mutableStateOf(false) }
+    var showStorageDialog by remember { mutableStateOf(false) }
     var cacheSize by remember { mutableLongStateOf(cacheManager.getCacheSize()) }
+    val context = LocalContext.current
+
+    val folderPicker = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocumentTree()
+    ) { uri: Uri? ->
+        uri?.let {
+            val flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            context.contentResolver.takePersistableUriPermission(it, flags)
+            preferenceManager.setCacheUri(it.toString())
+            preferenceManager.setCacheMode(CacheManager.StorageMode.CUSTOM.name)
+            cacheSize = cacheManager.getCacheSize()
+        }
+    }
 
     Scaffold(
         containerColor = Color.Black,
@@ -85,10 +102,35 @@ fun SettingsScreen(
                 onClick = onAddNewClick
             )
 
+            SettingsActionCard(
+                title = "Config Reset",
+                subtitle = "Wipe all data and restart setup",
+                icon = painterResource(R.drawable.ic_reset),
+                iconTint = MaterialTheme.colorScheme.primary,
+                onClick = onResetConfig
+            )
+
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = Color.DarkGray)
 
             Text("STORAGE", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
             
+            SettingsActionCard(
+                title = "Storage Location",
+                subtitle = run {
+                    val mode = preferenceManager.getCacheMode()
+                    if (mode == CacheManager.StorageMode.CUSTOM.name) {
+                        val uri = preferenceManager.getCacheUri() ?: "Not selected"
+                        // Clean up URI for display (remove document/%3A etc)
+                        val displayName = Uri.decode(uri).split("/").lastOrNull() ?: uri
+                        "Custom: $displayName"
+                    } else {
+                        "Current: $mode"
+                    }
+                },
+                icon = Icons.Default.Storage,
+                onClick = { showStorageDialog = true }
+            )
+
             SettingsActionCard(
                 title = "Clear Decryption Cache",
                 subtitle = "Current usage: ${formatFileSize(cacheSize)}",
@@ -98,18 +140,6 @@ fun SettingsScreen(
                     cacheSize = 0
                 }
             )
-
-            Spacer(modifier = Modifier.weight(1f))
-
-            // System Management
-            Text("SYSTEM", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-            SettingsActionCard(
-                title = "Config Reset",
-                subtitle = "Wipe all data and restart setup",
-                icon = painterResource(R.drawable.ic_reset),
-                iconTint = MaterialTheme.colorScheme.primary,
-                onClick = onResetConfig
-            )
         }
     }
 
@@ -117,6 +147,17 @@ fun SettingsScreen(
         FolderManagerDialog(
             database = database,
             onDismiss = { showFolderManager = false }
+        )
+    }
+
+    if (showStorageDialog) {
+        StorageLocationDialog(
+            preferenceManager = preferenceManager,
+            onDismiss = { 
+                showStorageDialog = false
+                cacheSize = cacheManager.getCacheSize()
+            },
+            onPickFolder = { folderPicker.launch(null) }
         )
     }
 }
@@ -197,6 +238,55 @@ fun FolderManagerDialog(database: AppDatabase, onDismiss: () -> Unit) {
         },
         confirmButton = {
             Button(onClick = onDismiss) { Text("Close") }
+        }
+    )
+}
+
+@Composable
+fun StorageLocationDialog(
+    preferenceManager: PreferenceManager,
+    onDismiss: () -> Unit,
+    onPickFolder: () -> Unit
+) {
+    val modes = listOf(
+        CacheManager.StorageMode.AUTO to "Auto (External > Internal)",
+        CacheManager.StorageMode.INTERNAL to "Internal Storage Only",
+        CacheManager.StorageMode.CUSTOM to "Custom Folder (Select...)"
+    )
+    val selectedMode = preferenceManager.getCacheMode()
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Color(0xFF1A1A1A),
+        title = { Text("Storage Location", color = Color.White, fontWeight = FontWeight.Bold) },
+        text = {
+            Column(Modifier.selectableGroup()) {
+                modes.forEach { (mode, label) ->
+                    Row(
+                        Modifier.fillMaxWidth().height(56.dp)
+                            .selectable(
+                                selected = (selectedMode == mode.name),
+                                onClick = { 
+                                    if (mode == CacheManager.StorageMode.CUSTOM) {
+                                        onPickFolder()
+                                        onDismiss()
+                                    } else {
+                                        preferenceManager.setCacheMode(mode.name)
+                                        onDismiss()
+                                    }
+                                },
+                                role = Role.RadioButton
+                            ),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(selected = (selectedMode == mode.name), onClick = null)
+                        Text(text = label, style = MaterialTheme.typography.bodyLarge, color = Color.White, modifier = Modifier.padding(start = 16.dp))
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Cancel") }
         }
     )
 }
