@@ -76,6 +76,7 @@ class MainActivity : FragmentActivity() {
                     composable("folder_list") {
                         FolderListScreen(
                             database = database,
+                            streamManager = streamManager,
                             onFolderClick = { folder ->
                                 navController.navigate("image_grid/${folder.id}")
                             },

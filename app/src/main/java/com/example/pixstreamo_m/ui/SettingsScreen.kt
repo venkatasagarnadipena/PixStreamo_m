@@ -33,6 +33,7 @@ import com.example.pixstreamo_m.data.FolderEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -46,7 +47,6 @@ fun SettingsScreen(
 ) {
     var showFolderManager by remember { mutableStateOf(false) }
     var cacheSize by remember { mutableLongStateOf(cacheManager.getCacheSize()) }
-    val scope = rememberCoroutineScope()
 
     Scaffold(
         containerColor = Color.Black,
@@ -69,29 +69,28 @@ fun SettingsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // Main Actions Section
-            Text("Management", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+            Text("GALLERY MANAGEMENT", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
             
             SettingsActionCard(
                 title = "Folder Management",
-                subtitle = "View and remove synced folders",
-                icon = painterResource(R.drawable.ic_filemanager),
+                subtitle = "Edit or remove existing sources",
+                icon = Icons.Default.List,
                 onClick = { showFolderManager = true }
             )
             
             SettingsActionCard(
-                title = "Add New URL",
-                subtitle = "Append more MEGA folders to your stream",
+                title = "Add New Source",
+                subtitle = "Sync another MEGA folder or JSON URL",
                 icon = Icons.Default.Add,
                 onClick = onAddNewClick
             )
 
             HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp), color = Color.DarkGray)
 
-            Text("Storage", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+            Text("STORAGE", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
             
             SettingsActionCard(
-                title = "Clear Cache",
+                title = "Clear Decryption Cache",
                 subtitle = "Current usage: ${formatFileSize(cacheSize)}",
                 icon = Icons.Default.Delete,
                 onClick = { 
@@ -102,13 +101,13 @@ fun SettingsScreen(
 
             Spacer(modifier = Modifier.weight(1f))
 
-            // Danger Zone
-            Text("Danger Zone", style = MaterialTheme.typography.labelLarge, color = Color.Red)
+            // System Management
+            Text("SYSTEM", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
             SettingsActionCard(
                 title = "Config Reset",
-                subtitle = "Wipe all URLs and folders from database",
+                subtitle = "Wipe all data and restart setup",
                 icon = painterResource(R.drawable.ic_reset),
-                iconTint = Color.Red,
+                iconTint = MaterialTheme.colorScheme.primary,
                 onClick = onResetConfig
             )
         }
@@ -143,7 +142,7 @@ fun SettingsActionCard(
         ) {
             Box(
                 modifier = Modifier
-                    .size(40.dp)
+                    .size(44.dp)
                     .background(iconTint.copy(alpha = 0.1f), RoundedCornerShape(12.dp)),
                 contentAlignment = Alignment.Center
             ) {
@@ -169,35 +168,35 @@ fun FolderManagerDialog(database: AppDatabase, onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = Color(0xFF1A1A1A),
-        title = { Text("Manage Folders", color = Color.White) },
+        title = { Text("Synced Folders", color = Color.White, fontWeight = FontWeight.Bold) },
         text = {
             if (folders.isEmpty()) {
-                Text("No folders found.", color = Color.Gray)
+                Text("No folders synced yet.", color = Color.Gray)
             } else {
                 LazyColumn(modifier = Modifier.heightIn(max = 400.dp)) {
                     items(folders) { folder ->
                         Row(
-                            modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp),
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
-                                Text(folder.name, color = Color.White, fontWeight = FontWeight.Medium)
+                                Text(folder.name, color = Color.White, fontWeight = FontWeight.SemiBold)
                                 Text(folder.url, color = Color.Gray, style = MaterialTheme.typography.labelSmall, maxLines = 1)
                             }
                             IconButton(onClick = { 
                                 scope.launch(Dispatchers.IO) { database.folderDao().deleteFolder(folder) }
                             }) {
-                                Icon(Icons.Default.Close, null, tint = Color.Red)
+                                Icon(Icons.Default.Delete, "Remove", tint = Color.Red.copy(alpha = 0.7f))
                             }
                         }
-                        HorizontalDivider(color = Color.DarkGray.copy(alpha = 0.5f))
+                        HorizontalDivider(color = Color.DarkGray.copy(alpha = 0.3f))
                     }
                 }
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) { Text("Done") }
+            Button(onClick = onDismiss) { Text("Close") }
         }
     )
 }
@@ -206,5 +205,5 @@ fun formatFileSize(size: Long): String {
     if (size <= 0) return "0 B"
     val units = listOf("B", "KB", "MB", "GB", "TB")
     val digitGroups = (Math.log10(size.toDouble()) / Math.log10(1024.0)).toInt()
-    return String.format("%.1f %s", size / Math.pow(1024.0, digitGroups.toDouble()), units[digitGroups])
+    return String.format(Locale.US, "%.1f %s", size / Math.pow(1024.0, digitGroups.toDouble()), units[digitGroups])
 }

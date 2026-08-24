@@ -69,15 +69,13 @@ fun ImageViewerScreen(
     }
     
     LaunchedEffect(pagerState.currentPage) {
-        sharedViewModel.setCurrentIndex(pagerState.currentPage, context)
+        sharedViewModel.setCurrentIndex(pagerState.currentPage)
     }
 
-    // TV Remote & Session
+    // TV Remote & Session cleanup
     DisposableEffect(Unit) {
         sharedViewModel.activeFolderUrl = folderUrl
-        sharedViewModel.initMediaSession(context)
         onDispose { 
-            sharedViewModel.releaseMediaSession()
             sharedViewModel.toggleSlideshow(false)
         }
     }
@@ -138,12 +136,16 @@ fun ImageViewerScreen(
             HorizontalPager(state = pagerState, modifier = Modifier.fillMaxSize(), pageSpacing = 16.dp, userScrollEnabled = !isSlideshowActive) { index ->
                 SubcomposeAsyncImage(model = nodes[index], contentDescription = nodes[index].name, imageLoader = imageLoader, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Fit) {
                     when (painter.state) {
-                        is AsyncImagePainter.State.Loading -> { Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator(color = Color.White) } }
+                        is AsyncImagePainter.State.Loading -> { 
+                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { 
+                                CircularProgressIndicator(color = MaterialTheme.colorScheme.primary) 
+                            } 
+                        }
                         is AsyncImagePainter.State.Error -> {
                             Column(modifier = Modifier.fillMaxSize(), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                                Text("Image Unavailable", color = Color.White)
+                                Icon(Icons.Default.Close, null, tint = Color.Gray, modifier = Modifier.size(48.dp))
                                 Spacer(modifier = Modifier.height(16.dp))
-                                IconButton(onClick = { }) { Icon(Icons.Default.Refresh, "Retry", tint = Color.White) }
+                                Text("Image Unavailable", color = Color.Gray)
                             }
                         }
                         else -> SubcomposeAsyncImageContent()

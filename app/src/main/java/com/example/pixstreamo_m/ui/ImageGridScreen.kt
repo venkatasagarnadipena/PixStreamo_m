@@ -11,6 +11,8 @@ import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
 import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -34,6 +36,10 @@ import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.concurrent.Executors
+
+import coil.compose.AsyncImagePainter
+import coil.compose.SubcomposeAsyncImage
+import coil.compose.SubcomposeAsyncImageContent
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -130,10 +136,7 @@ fun ImageGridScreen(
                     IconButton(onClick = onBackClick) { Icon(painterResource(R.drawable.ic_back), "Back", tint = Color.White) }
                 },
                 actions = {
-                    CastButton(streamManager = streamManager, modifier = Modifier.size(40.dp))
-                    IconButton(onClick = { loadNodes() }, enabled = !isLoading) {
-                        Icon(painterResource(R.drawable.ic_sync), "Refresh", tint = MaterialTheme.colorScheme.primary)
-                    }
+                    CastButton(streamManager = streamManager, modifier = Modifier.size(40.dp), tint = Color.White)
                 },
                 colors = TopAppBarDefaults.topAppBarColors(containerColor = Color.Black.copy(alpha = 0.8f))
             )
@@ -185,13 +188,27 @@ fun ImageCard(node: MegaImageNode, imageLoader: ImageLoader, onClick: () -> Unit
         colors = CardDefaults.cardColors(containerColor = Color(0xFF121212))
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            AsyncImage(
+            SubcomposeAsyncImage(
                 model = node,
                 contentDescription = node.name,
                 imageLoader = imageLoader,
                 modifier = Modifier.fillMaxSize(),
                 contentScale = ContentScale.Crop
-            )
+            ) {
+                when (painter.state) {
+                    is AsyncImagePainter.State.Loading -> {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp, color = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f))
+                        }
+                    }
+                    is AsyncImagePainter.State.Error -> {
+                        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                            Icon(Icons.Default.Close, null, tint = Color.DarkGray)
+                        }
+                    }
+                    else -> SubcomposeAsyncImageContent()
+                }
+            }
             
             // Minimal Overlay for text readability if needed
             Box(

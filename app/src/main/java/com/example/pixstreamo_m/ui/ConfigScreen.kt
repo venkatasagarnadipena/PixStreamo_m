@@ -66,15 +66,15 @@ fun ConfigScreen(
             
             Box(
                 modifier = Modifier
-                    .size(80.dp)
-                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f), RoundedCornerShape(24.dp)),
+                    .size(100.dp)
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.1f), RoundedCornerShape(28.dp)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    painter = painterResource(R.drawable.ic_launcher_foreground),
+                    painter = painterResource(R.mipmap.ic_launcher_main_foreground),
                     contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(48.dp)
+                    tint = Color.Unspecified, // Use original colors of the webp
+                    modifier = Modifier.size(72.dp)
                 )
             }
             

@@ -26,10 +26,13 @@ import com.example.pixstreamo_m.R
 import com.example.pixstreamo_m.data.AppDatabase
 import com.example.pixstreamo_m.data.FolderEntity
 
+import com.example.pixstreamo_m.mega.StreamManager
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun FolderListScreen(
     database: AppDatabase,
+    streamManager: StreamManager,
     onFolderClick: (FolderEntity) -> Unit,
     onSettingsClick: () -> Unit
 ) {
@@ -47,16 +50,17 @@ fun FolderListScreen(
                         "PixStreamo", 
                         style = MaterialTheme.typography.headlineSmall.copy(
                             fontWeight = FontWeight.Bold,
-                            letterSpacing = 2.sp
+                            letterSpacing = 1.sp
                         )
-                    ) 
+                    )
                 },
                 actions = {
+                    CastButton(streamManager = streamManager, modifier = Modifier.size(40.dp))
                     IconButton(onClick = onSettingsClick) {
                         Icon(
                             painter = painterResource(R.drawable.ic_setting), 
                             contentDescription = "Settings",
-                            tint = MaterialTheme.colorScheme.primary,
+                            tint = Color.White,
                             modifier = Modifier.size(28.dp)
                         )
                     }
@@ -110,21 +114,26 @@ fun FolderCard(folder: FolderEntity, onClick: () -> Unit) {
             .fillMaxWidth()
             .aspectRatio(1.1f)
             .clickable { onClick() },
-        shape = RoundedCornerShape(24.dp),
+        shape = RoundedCornerShape(28.dp),
         colors = CardDefaults.cardColors(
-            containerColor = Color(0xFF1A1A1A)
+            containerColor = Color(0xFF121212)
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.1f))
     ) {
         Box(modifier = Modifier.fillMaxSize()) {
-            // Gradient Overlay for "Modern" Look
+            // Subtle glow/gradient background
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(
-                        Brush.verticalGradient(
-                            colors = listOf(Color.Transparent, Color.Black.copy(alpha = 0.7f)),
-                            startY = 100f
+                        Brush.radialGradient(
+                            colors = listOf(
+                                MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                                Color.Transparent
+                            ),
+                            center = androidx.compose.ui.geometry.Offset(0f, 0f),
+                            radius = 300f
                         )
                     )
             )
@@ -132,23 +141,37 @@ fun FolderCard(folder: FolderEntity, onClick: () -> Unit) {
             Column(
                 modifier = Modifier
                     .align(Alignment.BottomStart)
-                    .padding(16.dp)
+                    .padding(20.dp)
             ) {
-                Icon(
-                    painter = painterResource(R.drawable.ic_filemanager),
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(32.dp)
-                )
-                Spacer(Modifier.height(8.dp))
+                Surface(
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                    modifier = Modifier.size(64.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            painter = painterResource(R.drawable.ic_filemanager),
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(36.dp)
+                        )
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
                 Text(
                     text = folder.name,
                     style = MaterialTheme.typography.titleMedium.copy(
-                        fontWeight = FontWeight.SemiBold,
-                        color = Color.White
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        lineHeight = 20.sp
                     ),
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
+                )
+                Text(
+                    text = "View Gallery",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.7f)
                 )
             }
         }

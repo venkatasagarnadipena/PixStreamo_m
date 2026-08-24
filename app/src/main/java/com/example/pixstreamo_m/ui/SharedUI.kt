@@ -25,8 +25,8 @@ fun PixStreamoTheme(
     content: @Composable () -> Unit
 ) {
     val darkColors = darkColorScheme(
-        primary = Color(0xFF3DDC84),
-        onPrimary = Color.Black,
+        primary = Color(0xFF2A7D69),
+        onPrimary = Color.White,
         background = Color.Black,
         onBackground = Color.White,
         surface = Color(0xFF121212),
@@ -48,7 +48,7 @@ fun PixStreamoTheme(
 fun CastButton(
     streamManager: StreamManager?,
     modifier: Modifier = Modifier,
-    tint: Color = LocalContentColor.current
+    tint: Color = Color.White
 ) {
     if (streamManager == null) return
     
